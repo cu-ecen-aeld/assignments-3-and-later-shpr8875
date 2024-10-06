@@ -1,7 +1,13 @@
-# Makefile to run writer.c
+# Makefile to run aesdsocket.c
 # Author: Shweta Prasad
 
-CC := gcc
+# aarch64-none-linux-gnu-gcc or gcc
+
+CC = gcc
+ifdef CROSS_COMPILE
+#aarch64-none-linux-gnu-
+CC = $(CROSS_COMPILE)gcc
+endif
 CFLAGS := -Wall -Werror -g 
 
 # Target executable
