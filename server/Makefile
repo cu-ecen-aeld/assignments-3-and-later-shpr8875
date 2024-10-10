@@ -8,7 +8,7 @@ endif
 
 # Set the compiler using CROSS_COMPILE variable
 CC := $(CROSS_COMPILE)gcc
-CFLAGS := -Wall -Werror -g 
+CFLAGS := -Wall -Werror -g
 
 # Target executable
 TARGET := aesdsocket
@@ -18,9 +18,8 @@ all: $(TARGET)
 
 # Build the target using the cross-compiler
 $(TARGET): aesdsocket.c
-	$(CC) $(CFLAGS) aesdsocket.c -o $(TARGET)
+$(CC) $(CFLAGS) aesdsocket.c -o $(TARGET)
 
 # Clean up previous builds
 clean:
-	rm -f $(TARGET)
-
+rm -f $(TARGET)
