@@ -1,6 +1,5 @@
 # Makefile to cross-compile aesdsocket.c
 # Author: Shweta Prasad
-
 # Ensure CROSS_COMPILE is set, otherwise throw an error
 ifndef CROSS_COMPILE
     $(error CROSS_COMPILE is not set)
@@ -18,8 +17,8 @@ all: $(TARGET)
 
 # Build the target using the cross-compiler
 $(TARGET): aesdsocket.c
-$(CC) $(CFLAGS) aesdsocket.c -o $(TARGET)
+	$(CC) $(CFLAGS) aesdsocket.c -o $(TARGET)  
 
 # Clean up previous builds
 clean:
-rm -f $(TARGET)
+	rm -f $(TARGET)  
