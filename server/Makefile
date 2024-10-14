@@ -1,20 +1,25 @@
 # Makefile to compile aesdsocket.c natively
 # Author: Shweta Prasad
 
-# Set the compiler
-CC := gcc
+# Default to gcc if CROSS_COMPILE is not set
+CC := $(CROSS_COMPILE)gcc
+
+# Compiler flags
 CFLAGS := -Wall -Werror -g
 
 # Target executable
 TARGET := aesdsocket
 
-# Source and target for compilation
+# Source file
+SRC := aesdsocket.c
+
+# All rule for compiling the target
 all: $(TARGET)
 
-# Build the target using the native compiler
-$(TARGET): aesdsocket.c
-	$(CC) $(CFLAGS) aesdsocket.c -o $(TARGET)
+# Rule for building the target using the chosen compiler
+$(TARGET): $(SRC)
+	$(CC) $(CFLAGS) $(SRC) -o $(TARGET)
 
-# Clean up previous builds
+# Clean rule for removing built files
 clean:
 	rm -f $(TARGET)
