@@ -29,9 +29,46 @@
 struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct aesd_circular_buffer *buffer,
             size_t char_offset, size_t *entry_offset_byte_rtn )
 {
-    /**
-    * TODO: implement per description
-    */
+     if (buffer == NULL || entry_offset_byte_rtn == NULL) 
+     {
+        return NULL;
+     }
+
+    size_t buffer_size = 0;
+    uint8_t index = buffer->out_offs;
+    struct aesd_buffer_entry *buf_entry;
+
+    // Loop until wrap around to the start
+    while (1) 
+    {
+        buf_entry = &buffer->entry[index];
+
+        if (buf_entry->buffptr != NULL) 
+        {
+            if (char_offset >= buffer_size && char_offset < (buffer_size + buf_entry->size)) 
+            {
+                *entry_offset_byte_rtn = char_offset - buffer_size;
+                return buf_entry;  // Found the entry
+            }
+            buffer_size += buf_entry->size;
+        }
+
+        // Increment index and wrap around if necessary
+        index++;
+        
+        // CHeck for max buffer operation
+        if (index >= AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED) 
+        {
+            index = 0;
+        }
+
+        // Break the loop after wrap around
+        if (index == buffer->out_offs) 
+        {
+            break;
+        }
+    }
+
     return NULL;
 }
 
@@ -44,9 +81,32 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct
 */
 void aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const struct aesd_buffer_entry *add_entry)
 {
-    /**
-    * TODO: implement per description
-    */
+    // Null pointer checks
+    if (buffer == NULL || add_entry == NULL) 
+    {
+        return;
+    }
+       
+     // adding elements in buffer
+    buffer->entry[buffer->in_offs] = *add_entry;
+    
+    // Move up in_offs
+    buffer->in_offs++;
+    
+    if (buffer->in_offs >= AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED) 
+    {
+        buffer->in_offs = 0;
+    }
+
+    // Check if the buffer is full
+    if (buffer->full) 
+    {
+        // If full, overwrite the oldest entry
+        buffer->out_offs = buffer->in_offs;
+    }
+
+    // Update full status
+    buffer->full = (buffer->in_offs == buffer->out_offs);
 }
 
 /**
