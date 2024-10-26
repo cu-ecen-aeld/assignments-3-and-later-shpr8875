@@ -16,8 +16,11 @@
 #include <netdb.h>
 
 #define PORT "9000"
-#define FILE_PATH "/var/tmp/aesdsocketdata"
+//#define FILE_PATH "/var/tmp/aesdsocketdata"
+#define FILE_PATH "/dev/aesdchar"
 #define CONNECTIONS 20
+
+#define USE_AESD_CHAR_DEVICE 1
 
 
 // Thread elements in structure
@@ -126,7 +129,7 @@ static void timestamp_thread(void* thread)
         strftime(buffer1, sizeof(buffer1), "%a, %d %b %Y %T %z", info);
         buffer1[strlen(buffer1)] = '\n';
         strcat( buffer2, buffer1 );
-        printf("%s", buffer2);
+        //printf("%s", buffer2);
        
         // Write timestamp to file, synchronized with mutex
         pthread_mutex_lock(&mutex);

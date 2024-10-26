@@ -18,10 +18,14 @@
 #include <linux/cdev.h>
 #include <linux/fs.h> // file_operations
 #include "aesdchar.h"
+#include <linux/slab.h> 
+#include <linux/uio.h> 
+
+
 int aesd_major =   0; // use dynamic major
 int aesd_minor =   0;
 
-MODULE_AUTHOR("Your Name Here"); /** TODO: fill in your name **/
+MODULE_AUTHOR("Shweta Prasad"); 
 MODULE_LICENSE("Dual BSD/GPL");
 
 struct aesd_dev aesd_device;
@@ -29,9 +33,10 @@ struct aesd_dev aesd_device;
 int aesd_open(struct inode *inode, struct file *filp)
 {
     PDEBUG("open");
-    /**
-     * TODO: handle open
-     */
+    
+    dev = container_of(inode->i_cdev, struct aesd_dev, cdev);   
+    filep->private_data = dev;
+    
     return 0;
 }
 
@@ -48,24 +53,141 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
                 loff_t *f_pos)
 {
     ssize_t retval = 0;
+    struct aesd_dev *dev = filp->private_data;
+    size_t byte_read;
+    const char *data;
+    
     PDEBUG("read %zu bytes with offset %lld",count,*f_pos);
-    /**
-     * TODO: handle read
-     */
+
+    mutex_lock(&dev->lock);
+
+    // Retrieve the pointer to data from the circular buffer starting at *f_pos
+    data = aesd_circular_buffer_find_entry_offset_for_fpos(&dev->buffer, *f_pos, &bytes_read);
+    if (!data) 
+    {
+        mutex_unlock(&dev->lock);
+        return 0; // No data available
+    }
+
+    // Limit bytes_read to the smaller of bytes available and count
+    bytes_read = min(bytes_read, count);
+
+    // Transfer data byte by byte to the user space buffer using put_user
+    for (i = 0; i < bytes_read; i++) 
+    {
+        if (put_user(data[i], buf + i)) 
+        {
+            retval = -EFAULT;
+            mutex_unlock(&dev->lock);
+            return retval;
+        }
+    }
+
+    *f_pos += bytes_read;
+    retval = bytes_read;
+
+    mutex_unlock(&dev->lock);
     return retval;
+
 }
 
 ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
                 loff_t *f_pos)
 {
     ssize_t retval = -ENOMEM;
-    PDEBUG("write %zu bytes with offset %lld",count,*f_pos);
-    /**
-     * TODO: handle write
-     */
-    return retval;
+    struct aesd_dev *dev = filp->private_data;
+    const char newline = '\n'; 
+    char *command_buf = NULL; 
+    size_t new_size;
+
+    PDEBUG("write %zu bytes with offset %lld", count, *f_pos);
+
+    
+    if (count > AESD_MAX_WRITE_SIZE) 
+    {
+        return -EINVAL; // Return error if too large
+    }
+
+    mutex_lock(&dev->lock); 
+
+   // Making use of partialm cmd
+    if (dev->partial_command) 
+    {
+        new_size = dev->partial_size + count; 
+        command_buf = krealloc(dev->partial_command, new_size, GFP_KERNEL);
+        if (!command_buf) {
+            retval = -ENOMEM; // Memory allocation failed
+            mutex_unlock(&dev->lock);
+            return retval;
+        }
+
+        // copy new data into buffer
+        if (copy_from_user(command_buf + dev->partial_size, buf, count)) 
+        {
+            kfree(command_buf);
+            mutex_unlock(&dev->lock);
+            return -EFAULT; 
+        }
+        dev->partial_command = command_buf; 
+        dev->partial_size = new_size; 
+    } 
+    else 
+    {
+        // Allocate a new buffer for the command
+        command_buf = kmalloc(count, GFP_KERNEL);
+        if (!command_buf) 
+        {
+            retval = -ENOMEM;
+            mutex_unlock(&dev->lock);
+            return retval;
+        }
+
+        // Copy data from user space to kernel space
+        if (copy_from_user(command_buf, buf, count)) 
+        {
+            kfree(command_buf); 
+            mutex_unlock(&dev->lock);
+            return -EFAULT; 
+        }
+        dev->partial_command = command_buf; 
+        dev->partial_size = count; 
+    }
+
+     // Check if the command contains a newline character
+    if (memchr(dev->partial_command, newline, dev->partial_size)) 
+    {
+       // Add the complete command to the circular buffer
+        retval = aesd_circular_buffer_add_entry(&dev->buffer, dev->partial_command, dev->partial_size);
+        if (retval < 0) 
+        {
+            kfree(dev->partial_command); 
+            dev->partial_command = NULL; 
+            dev->partial_size = 0; 
+        } 
+        else 
+        {
+            // If the buffer was full, free the oldest entry
+            if (dev->buffer.full) 
+            {
+                kfree(dev->buffer.entry[dev->buffer.out_offs].buffptr);
+            }
+            // Reset the partial command state for future writes
+            dev->partial_command = NULL;
+            dev->partial_size = 0;
+            retval = count; 
+        }
+    } 
+    else 
+    {
+        retval = count; 
+    }
+
+    mutex_unlock(&dev->lock); // Unlock the mutex
+    return retval; 
 }
-struct file_operations aesd_fops = {
+
+struct file_operations aesd_fops = 
+{
     .owner =    THIS_MODULE,
     .read =     aesd_read,
     .write =    aesd_write,
@@ -81,7 +203,8 @@ static int aesd_setup_cdev(struct aesd_dev *dev)
     dev->cdev.owner = THIS_MODULE;
     dev->cdev.ops = &aesd_fops;
     err = cdev_add (&dev->cdev, devno, 1);
-    if (err) {
+    if (err) 
+    {
         printk(KERN_ERR "Error %d adding aesd cdev", err);
     }
     return err;
@@ -96,19 +219,19 @@ int aesd_init_module(void)
     result = alloc_chrdev_region(&dev, aesd_minor, 1,
             "aesdchar");
     aesd_major = MAJOR(dev);
-    if (result < 0) {
+    if (result < 0) 
+    {
         printk(KERN_WARNING "Can't get major %d\n", aesd_major);
         return result;
     }
     memset(&aesd_device,0,sizeof(struct aesd_dev));
 
-    /**
-     * TODO: initialize the AESD specific portion of the device
-     */
+    mutex_init(&aesd_device.lock);
 
     result = aesd_setup_cdev(&aesd_device);
 
-    if( result ) {
+    if( result ) 
+    {
         unregister_chrdev_region(dev, 1);
     }
     return result;
@@ -118,12 +241,17 @@ int aesd_init_module(void)
 void aesd_cleanup_module(void)
 {
     dev_t devno = MKDEV(aesd_major, aesd_minor);
-
     cdev_del(&aesd_device.cdev);
 
-    /**
-     * TODO: cleanup AESD specific poritions here as necessary
-     */
+   AESD_CIRCULAR_BUFFER_FOREACH(entry, &aesd_device.buffer, index) 
+    {
+        kfree(entry->buffptr);
+    }
+    kfree(aesd_device.entry.buffptr);
+    mutex_destroy(&aesd_device.lock;
+
+    // Free partial command memory if allocated
+    kfree(aesd_device.partial_command);
 
     unregister_chrdev_region(devno, 1);
 }
