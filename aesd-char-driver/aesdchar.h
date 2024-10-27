@@ -25,9 +25,10 @@
 
 struct aesd_dev
 {
-    /**
-     * TODO: Add structure(s) and locks needed to complete assignment requirements
-     */
+    struct mutex lock;              // Mutex for synchronizing access
+    struct aesd_circular_buffer buffer; // Circular buffer for storing data
+    char *partial_command;          // Buffer for partially written commands
+    size_t partial_size;            // Size of the partial command
     struct cdev cdev;     /* Char device structure      */
 };
 

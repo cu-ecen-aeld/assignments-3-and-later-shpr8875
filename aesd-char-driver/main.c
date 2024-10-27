@@ -56,6 +56,8 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
     struct aesd_dev *dev = filp->private_data;
     size_t byte_read;
     const char *data;
+    size_t i;
+
     
     PDEBUG("read %zu bytes with offset %lld",count,*f_pos);
 
@@ -103,7 +105,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     PDEBUG("write %zu bytes with offset %lld", count, *f_pos);
 
     
-    if (count > AESD_MAX_WRITE_SIZE) 
+    if (count > AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED) 
     {
         return -EINVAL; // Return error if too large
     }
@@ -248,7 +250,7 @@ void aesd_cleanup_module(void)
         kfree(entry->buffptr);
     }
     kfree(aesd_device.entry.buffptr);
-    mutex_destroy(&aesd_device.lock;
+    mutex_destroy(&aesd_device.lock);
 
     // Free partial command memory if allocated
     kfree(aesd_device.partial_command);
