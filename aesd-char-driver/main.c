@@ -132,13 +132,6 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
         mutex_unlock(&dev->lock);
         return retval;
     }
-
-    // Copy data from user space
-    if (copy_from_user(dev->entry.buffptr + new_size, buf, count)) 
-    {
-        mutex_unlock(&dev->lock);
-        return -EFAULT;
-    }
    
     bytes_not_write = copy_from_user((void*)&dev->entry.buffptr[new_size], buf, count);
     retval = count - bytes_not_write;
@@ -148,7 +141,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 
     if (strchr((char*)dev->entry.buffptr, newline)) 
     {
-        const char *old_entry = aesd_circular_buffer_add_entry(&dev->buffer, &dev->entry);
+        const char* old_entry = aesd_circular_buffer_add_entry(&dev->buffer, &dev->entry);
         kfree(old_entry);  
         dev->entry.buffptr = NULL; 
         dev->entry.size = 0;
