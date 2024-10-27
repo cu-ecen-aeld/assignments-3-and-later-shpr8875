@@ -20,6 +20,7 @@
 #include "aesdchar.h"
 #include <linux/slab.h> 
 #include <linux/uio.h> 
+#include "aesd-circular-buffer.h"
 
 
 int aesd_major =   0; // use dynamic major
@@ -54,6 +55,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 {
     ssize_t retval = 0;
     struct aesd_dev *dev = filp->private_data;
+    //struct aesd_buffer_entry *entry;
     size_t byte_read;
     const char *data;
     size_t i;
@@ -244,6 +246,8 @@ void aesd_cleanup_module(void)
 {
     dev_t devno = MKDEV(aesd_major, aesd_minor);
     cdev_del(&aesd_device.cdev);
+    int index;
+    struct aesd_buffer_entry *entry;
 
    AESD_CIRCULAR_BUFFER_FOREACH(entry, &aesd_device.buffer, index) 
     {
