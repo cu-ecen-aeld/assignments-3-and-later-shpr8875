@@ -55,9 +55,8 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 {
     ssize_t retval = 0;
     struct aesd_dev *dev = filp->private_data;
-    //struct aesd_buffer_entry *entry;
+    struct aesd_buffer_entry *data;
     size_t byte_read;
-    const char *data;
     size_t i;
 
     
@@ -73,11 +72,16 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
         return 0; // No data available
     }
 
-    // Limit bytes_read to the smaller of bytes available and count
-    bytes_read = min(bytes_read, count);
+   
+    size_t bytes_to_read = bytes_read; 
+    if (bytes_to_read > count) 
+    {
+        bytes_to_read = count; 
+    }
+
 
     // Transfer data byte by byte to the user space buffer using put_user
-    for (i = 0; i < bytes_read; i++) 
+    for (i = 0; i < bytes_to_read; i++) 
     {
         if (put_user(data[i], buf + i)) 
         {
@@ -87,8 +91,8 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
         }
     }
 
-    *f_pos += bytes_read;
-    retval = bytes_read;
+    *f_pos += bytes_to_read; // Update the file position
+    retval = bytes_to_read;   // Return the number of bytes read
 
     mutex_unlock(&dev->lock);
     return retval;
@@ -253,7 +257,7 @@ void aesd_cleanup_module(void)
     {
         kfree(entry->buffptr);
     }
-    kfree(aesd_device.entry.buffptr);
+   // kfree(aesd_device.entry.buffptr);
     mutex_destroy(&aesd_device.lock);
 
     // Free partial command memory if allocated
