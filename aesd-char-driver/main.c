@@ -57,6 +57,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
     struct aesd_dev *dev = filp->private_data;
     struct aesd_buffer_entry *data;
     size_t bytes_read;
+    size_t bytes_to_read = bytes_read; 
     size_t i;
 
     
@@ -73,7 +74,6 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
     }
 
    
-    size_t bytes_to_read = bytes_read; 
     if (bytes_to_read > count) 
     {
         bytes_to_read = count; 
@@ -141,8 +141,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 
     if (strchr((char*)dev->entry.buffptr, newline)) 
     {
-        const char* old_entry = aesd_circular_buffer_add_entry(&dev->buffer, &dev->entry);
-        kfree(old_entry);  
+        aesd_circular_buffer_add_entry(&dev->buffer, &dev->entry);
         dev->entry.buffptr = NULL; 
         dev->entry.size = 0;
     }
