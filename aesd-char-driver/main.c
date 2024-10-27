@@ -134,13 +134,13 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     }
 
     // Copy data from user space
-    if (memcpy_from_user(dev->entry.buffptr + current_size, buf, count)) 
+    if (copy_from_user(dev->entry.buffptr + new_size, buf, count)) 
     {
         mutex_unlock(&dev->lock);
         return -EFAULT;
     }
    
-    bytes_not_write = copy_from_user((void*)&dev->entry.buffptr[size], buf, count);
+    bytes_not_write = copy_from_user((void*)&dev->entry.buffptr[new_size], buf, count);
     retval = count - bytes_not_write;
     dev->entry.size += retval;
 

@@ -30,6 +30,7 @@ struct aesd_dev
     struct aesd_circular_buffer buffer; // Circular buffer for storing data
     char *partial_command;          // Buffer for partially written commands
     size_t partial_size;            // Size of the partial command
+    struct aesd_buffer_entry entry;
     struct cdev cdev;     /* Char device structure      */
 };
 
