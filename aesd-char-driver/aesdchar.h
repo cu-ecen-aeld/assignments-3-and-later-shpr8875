@@ -22,6 +22,7 @@
 #else
 #  define PDEBUG(fmt, args...) /* not debugging: nothing */
 #endif
+#include "aesd-circular-buffer.h"
 
 struct aesd_dev
 {

@@ -32,11 +32,11 @@ MODULE_LICENSE("Dual BSD/GPL");
 struct aesd_dev aesd_device;
 
 int aesd_open(struct inode *inode, struct file *filp)
-{
+{   struct aesd_dev *dev;
     PDEBUG("open");
     
     dev = container_of(inode->i_cdev, struct aesd_dev, cdev);   
-    filep->private_data = dev;
+    filp->private_data = dev;
     
     return 0;
 }
@@ -56,7 +56,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
     ssize_t retval = 0;
     struct aesd_dev *dev = filp->private_data;
     struct aesd_buffer_entry *data;
-    size_t byte_read;
+    size_t bytes_read;
     size_t i;
 
     
