@@ -31,7 +31,7 @@ typedef struct {
 } thread_info_t;
 
 pthread_mutex_t mutex;
-pthread_t timestamp_threadId;
+//pthread_t timestamp_threadId;
 
 
 // Singly linked list node to hold thread information
@@ -105,13 +105,13 @@ static void signal_handler(int signal_number)
         	fclose(fp);
         }
         cleaup_slist();
-        pthread_cancel(timestamp_threadId);
-        pthread_join(timestamp_threadId, NULL);
+      //  pthread_cancel(timestamp_threadId);
+      //  pthread_join(timestamp_threadId, NULL);
         exit(0);
     }
 }
 
-
+/*
 // Timestamp thread that writes current timestamp to the file every 10 seconds
 static void timestamp_thread(void* thread)
 {
@@ -138,7 +138,7 @@ static void timestamp_thread(void* thread)
         pthread_mutex_unlock(&mutex);
     }
 }
-
+*/
 
 // Thread function to handle individual client connections
 static void connection_thread(void* thread)
@@ -193,14 +193,14 @@ static void connection_thread(void* thread)
             if (callTimeStampthread == false)
             {
                 callTimeStampthread = true;
-                int error = pthread_create(&timestamp_threadId,
-                            NULL,
-                            (void*) &timestamp_thread,
-                            NULL);
-                if (error != 0)
-                {
-                    exit(-1);
-                }    
+            //    int error = pthread_create(&timestamp_threadId,
+            //                NULL,
+            //                (void*) &timestamp_thread,
+             //               NULL);
+               // if (error != 0)
+               // {
+               //     exit(-1);
+               // }    
             }
            
             threadInfo->conn_build = true;
@@ -244,8 +244,8 @@ void exit_procedure(void)
     remove(FILE_PATH);
     fclose(fp);
     cleaup_slist();
-    pthread_cancel(timestamp_threadId);
-    pthread_join(timestamp_threadId, NULL);
+    //pthread_cancel(timestamp_threadId);
+    //pthread_join(timestamp_threadId, NULL);
     exit(-1);
 }
 
@@ -413,8 +413,8 @@ int main(int argc, char **argv)
     
     syslog(LOG_DEBUG, "Ending \n");
     pthread_mutex_destroy(&mutex);
-    pthread_cancel(timestamp_threadId);
-    pthread_join(timestamp_threadId, NULL);
+   // pthread_cancel(timestamp_threadId);
+   // pthread_join(timestamp_threadId, NULL);
     fclose(fp);
     remove(FILE_PATH);
     syslog(LOG_DEBUG, "Ending \n");
