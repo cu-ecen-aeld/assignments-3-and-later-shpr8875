@@ -83,7 +83,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
     // Transfer data byte by byte to the user space buffer using put_user
     for (i = 0; i < bytes_to_read; i++) 
     {
-        if (put_user(data[i], buf + i)) 
+        if (put_user(data->buffptr[i], buf + i)) 
         {
             retval = -EFAULT;
             mutex_unlock(&dev->lock);
@@ -164,13 +164,18 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
      // Check if the command contains a newline character
     if (memchr(dev->partial_command, newline, dev->partial_size)) 
     {
-       // Add the complete command to the circular buffer
-        retval = aesd_circular_buffer_add_entry(&dev->buffer, dev->partial_command, dev->partial_size);
+    
+        struct aesd_buffer_entry entry;
+        entry.buffptr = dev->partial_command; // Pointer to the command buffer
+        entry.size = dev->partial_size; // Size of the command
+           
+        // Add the complete command to the circular buffer
+        retval = aesd_circular_buffer_add_entry(&dev->buffer, &entry);
         if (retval < 0) 
         {
             kfree(dev->partial_command); 
             dev->partial_command = NULL; 
-            dev->partial_size = 0; 
+            dev->partial_size = 0;
         } 
         else 
         {
