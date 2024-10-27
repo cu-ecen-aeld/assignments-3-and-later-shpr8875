@@ -104,10 +104,10 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 {
     ssize_t retval = -ENOMEM;
     struct aesd_dev *dev = filp->private_data;
-    const char newline = '\n'; 
-    char *command_buf = NULL; 
-    size_t new_size;
-
+    const char newline = '\n';  
+    size_t new_size = dev->entry.size;
+    ssize_t bytes_not_write;
+    
     PDEBUG("write %zu bytes with offset %lld", count, *f_pos);
 
     
@@ -117,82 +117,41 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     }
 
     mutex_lock(&dev->lock); 
-
-   // Making use of partialm cmd
-    if (dev->partial_command) 
+  
+    // Allocate memory for the new data or resize if necessary
+    if (new_size == 0) 
     {
-        new_size = dev->partial_size + count; 
-        command_buf = krealloc(dev->partial_command, new_size, GFP_KERNEL);
-        if (!command_buf) {
-            retval = -ENOMEM; // Memory allocation failed
-            mutex_unlock(&dev->lock);
-            return retval;
-        }
-
-        // copy new data into buffer
-        if (copy_from_user(command_buf + dev->partial_size, buf, count)) 
-        {
-            kfree(command_buf);
-            mutex_unlock(&dev->lock);
-            return -EFAULT; 
-        }
-        dev->partial_command = command_buf; 
-        dev->partial_size = new_size; 
-    } 
-    else 
+        dev->entry.buffptr = kzalloc(count, GFP_KERNEL);
+    } else 
     {
-        // Allocate a new buffer for the command
-        command_buf = kmalloc(count, GFP_KERNEL);
-        if (!command_buf) 
-        {
-            retval = -ENOMEM;
-            mutex_unlock(&dev->lock);
-            return retval;
-        }
-
-        // Copy data from user space to kernel space
-        if (copy_from_user(command_buf, buf, count)) 
-        {
-            kfree(command_buf); 
-            mutex_unlock(&dev->lock);
-            return -EFAULT; 
-        }
-        dev->partial_command = command_buf; 
-        dev->partial_size = count; 
+        dev->entry.buffptr = krealloc(dev->entry.buffptr, new_size + count, GFP_KERNEL);
     }
 
-     // Check if the command contains a newline character
-    if (memchr(dev->partial_command, newline, dev->partial_size)) 
+    if (!dev->entry.buffptr) 
     {
-    
-        struct aesd_buffer_entry entry;
-        entry.buffptr = dev->partial_command; // Pointer to the command buffer
-        entry.size = dev->partial_size; // Size of the command
-           
-        // Add the complete command to the circular buffer
-        retval = aesd_circular_buffer_add_entry(&dev->buffer, &entry);
-        if (retval < 0) 
-        {
-            kfree(dev->partial_command); 
-            dev->partial_command = NULL; 
-            dev->partial_size = 0;
-        } 
-        else 
-        {
-            // If the buffer was full, free the oldest entry
-            if (dev->buffer.full) 
-            {
-                kfree(dev->buffer.entry[dev->buffer.out_offs].buffptr);
-            }
-            // Reset the partial command state for future writes
-            dev->partial_command = NULL;
-            dev->partial_size = 0;
-            retval = count; 
-        }
-    } 
-    else 
+        mutex_unlock(&dev->lock);
+        return retval;
+    }
+
+    // Copy data from user space
+    if (memcpy_from_user(dev->entry.buffptr + current_size, buf, count)) 
     {
-        retval = count; 
+        mutex_unlock(&dev->lock);
+        return -EFAULT;
+    }
+   
+    bytes_not_write = copy_from_user((void*)&dev->entry.buffptr[size], buf, count);
+    retval = count - bytes_not_write;
+    dev->entry.size += retval;
+
+    *f_pos += retval;  // Update file position
+
+    if (strchr((char*)dev->entry.buffptr, newline)) 
+    {
+        const char *old_entry = aesd_circular_buffer_add_entry(&dev->buffer, &dev->entry);
+        kfree(old_entry);  
+        dev->entry.buffptr = NULL; 
+        dev->entry.size = 0;
     }
 
     mutex_unlock(&dev->lock); // Unlock the mutex
@@ -266,7 +225,7 @@ void aesd_cleanup_module(void)
     mutex_destroy(&aesd_device.lock);
 
     // Free partial command memory if allocated
-    kfree(aesd_device.partial_command);
+   // kfree(aesd_device.partial_command);
 
     unregister_chrdev_region(devno, 1);
 }
