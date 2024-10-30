@@ -1,12 +1,8 @@
-# Makefile to cross-compile aesdsocket.c
+# Makefile to compile aesdsocket.c natively
 # Author: Shweta Prasad
-# Ensure CROSS_COMPILE is set, otherwise throw an error
-ifndef CROSS_COMPILE
-    $(error CROSS_COMPILE is not set)
-endif
 
-# Set the compiler using CROSS_COMPILE variable
-CC := $(CROSS_COMPILE)gcc
+# Set the compiler
+CC := gcc
 CFLAGS := -Wall -Werror -g
 
 # Target executable
@@ -15,10 +11,10 @@ TARGET := aesdsocket
 # Source and target for compilation
 all: $(TARGET)
 
-# Build the target using the cross-compiler
+# Build the target using the native compiler
 $(TARGET): aesdsocket.c
-	$(CC) $(CFLAGS) aesdsocket.c -o $(TARGET)  
+	$(CC) $(CFLAGS) aesdsocket.c -o $(TARGET)
 
 # Clean up previous builds
 clean:
-	rm -f $(TARGET)  
+	rm -f $(TARGET)
