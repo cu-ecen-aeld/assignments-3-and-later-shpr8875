@@ -152,63 +152,6 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 
 
 
-//llseek implementation
-loff_t aesd_llseek(struct file *filp, loff_t offset, int pos)
-{
-    struct aesd_dev *dev = filp->private_data;
-    loff_t new_pos;
-
-    mutex_lock(&dev->lock);
-    switch (pos) 
-    {
-        case SEEK_SET:
-            new_pos = offset;
-            break;
-        case SEEK_CUR:
-            new_pos = filp->f_pos + offset;
-            break;
-        case SEEK_END:
-            new_pos = AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED
-            break;
-        default:
-            mutex_unlock(&dev->lock);
-            return -EINVAL;
-    }
-
-    // Validate the new position
-    if (new_pos < 0 || new_pos > AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED) 
-    { 
-        mutex_unlock(&dev->lock);
-        return -EINVAL;
-    }
-
-    filp->f_pos = new_pos;
-    mutex_unlock(&dev->lock);
-    return new_pos;
-}
-
-// Implement ioctl support
-long aesd_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
-{
-    struct aesd_dev *dev = filp->private_data;
-    int ret = 0;
-
-    if (cmd == AESDCHAR_IOCSEEKTO) 
-    {
-        struct aesd_seekto seek_data;
-
-        // Copy data from user space
-        if (copy_from_user(&seek_data, (void __user *)arg, sizeof(seek_data))) 
-        {
-            return -EFAULT;
-        }
-
-        return ret;
-    }
-
-    return -ENOTTY; 
-}
-
 struct file_operations aesd_fops = 
 {
     .owner = THIS_MODULE,
@@ -235,6 +178,93 @@ static int aesd_setup_cdev(struct aesd_dev *dev)
     return err;
 }
 
+
+// llseek implementation
+loff_t aesd_llseek(struct file *filp, loff_t offset, int pos)
+{
+    struct aesd_dev *dev = filp->private_data;
+    loff_t new_pos;
+
+    mutex_lock(&dev->lock);
+    switch (pos) 
+    {
+        case SEEK_SET:
+            new_pos = offset;
+            break;
+        case SEEK_CUR:
+            new_pos = filp->f_pos + offset;
+            break;
+        case SEEK_END:
+            new_pos = AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED; 
+            break;
+        default:
+            mutex_unlock(&dev->lock);
+            return -EINVAL;
+    }
+
+    // Validate the new position
+    if (new_pos < 0 || new_pos > AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED) 
+    { 
+        mutex_unlock(&dev->lock);
+        return -EINVAL;
+    }
+
+    filp->f_pos = new_pos;
+    mutex_unlock(&dev->lock);
+    return new_pos;
+}
+
+
+static long aesd_adjust_file_offset(struct file *filp, unsigned int write_cmd, unsigned int write_cmd_offset)
+{
+    struct aesd_dev *dev = filp->private_data;
+    unsigned int total_offset = 0;
+    unsigned int i;
+
+    if (write_cmd >= dev->buffer.cmd_count || write_cmd_offset >= dev->buffer.entry[write_cmd].size)
+    {
+        return -EINVAL;
+    }
+
+    for (i = 0; i < write_cmd; i++)
+    {
+        total_offset += dev->buffer.entry[i].size;
+    }
+
+    total_offset += write_cmd_offset;
+
+    filp->f_pos = total_offset;
+
+    return 0;
+}
+
+
+
+// Implement ioctl support
+long aesd_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+{
+    struct aesd_dev *dev = filp->private_data;  // Ensure this is used or remove it
+    int ret = 0;
+
+    if (cmd == AESDCHAR_IOCSEEKTO) 
+    {
+        struct aesd_seekto seek_data;
+
+        // Copy data from user space
+        if ( copy_from_user(&seek_data, (const void __user *)arg, sizeof(seek_data))!=0 ) 
+        {
+            return -EFAULT;
+        }
+	else
+	{
+	 retval = aesd_adjust_file_offset(filp,seekto.write_cmd,seekto.write_cmd_offset);
+	}
+
+        return ret;
+    }
+
+    return -ENOTTY; 
+}
 
 
 int aesd_init_module(void)
