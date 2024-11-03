@@ -26,6 +26,10 @@
 int aesd_major =   0; // use dynamic major
 int aesd_minor =   0;
 
+// Function prototypes
+loff_t aesd_llseek(struct file *filp, loff_t offset, int pos);
+long aesd_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+
 MODULE_AUTHOR("Shweta Prasad"); 
 MODULE_LICENSE("Dual BSD/GPL");
 
@@ -161,6 +165,8 @@ struct file_operations aesd_fops =
     .release = aesd_release,
     .llseek = aesd_llseek, 
     .unlocked_ioctl = aesd_ioctl,
+ 
+ }
 
 
 static int aesd_setup_cdev(struct aesd_dev *dev)
@@ -240,10 +246,10 @@ static long aesd_adjust_file_offset(struct file *filp, unsigned int write_cmd, u
 
 
 
-// Implement ioctl support
+// Correcting aesd_ioctl implementation
 long aesd_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
-    struct aesd_dev *dev = filp->private_data;  // Ensure this is used or remove it
+    struct aesd_dev *dev = filp->private_data;
     int ret = 0;
 
     if (cmd == AESDCHAR_IOCSEEKTO) 
@@ -251,20 +257,18 @@ long aesd_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
         struct aesd_seekto seek_data;
 
         // Copy data from user space
-        if ( copy_from_user(&seek_data, (const void __user *)arg, sizeof(seek_data))!=0 ) 
+        if (copy_from_user(&seek_data, (const void __user *)arg, sizeof(seek_data)) != 0) 
         {
             return -EFAULT;
         }
-	else
-	{
-	 retval = aesd_adjust_file_offset(filp,seekto.write_cmd,seekto.write_cmd_offset);
-	}
 
+        ret = aesd_adjust_file_offset(filp, seek_data.write_cmd, seek_data.write_cmd_offset);
         return ret;
     }
 
     return -ENOTTY; 
 }
+
 
 
 int aesd_init_module(void)
