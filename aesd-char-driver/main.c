@@ -28,7 +28,7 @@ int aesd_minor =   0;
 
 // Function prototypes
 loff_t aesd_llseek(struct file *filp, loff_t offset, int pos);
-long aesd_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+long aesd_ioctl(struct file *filp, unsigned int cmd, unsigned long arg);
 
 MODULE_AUTHOR("Shweta Prasad"); 
 MODULE_LICENSE("Dual BSD/GPL");
