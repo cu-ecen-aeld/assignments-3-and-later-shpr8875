@@ -169,22 +169,6 @@ struct file_operations aesd_fops =
  }
 
 
-static int aesd_setup_cdev(struct aesd_dev *dev)
-{
-    int err, devno = MKDEV(aesd_major, aesd_minor);
-
-    cdev_init(&dev->cdev, &aesd_fops);
-    dev->cdev.owner = THIS_MODULE;
-    dev->cdev.ops = &aesd_fops;
-    err = cdev_add (&dev->cdev, devno, 1);
-    if (err) 
-    {
-        printk(KERN_ERR "Error %d adding aesd cdev", err);
-    }
-    return err;
-}
-
-
 // llseek implementation
 loff_t aesd_llseek(struct file *filp, loff_t offset, int pos)
 {
@@ -268,6 +252,24 @@ long aesd_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
     return -ENOTTY; 
 }
+
+
+
+static int aesd_setup_cdev(struct aesd_dev *dev)
+{
+    int err, devno = MKDEV(aesd_major, aesd_minor);
+
+    cdev_init(&dev->cdev, &aesd_fops);
+    dev->cdev.owner = THIS_MODULE;
+    dev->cdev.ops = &aesd_fops;
+    err = cdev_add (&dev->cdev, devno, 1);
+    if (err) 
+    {
+        printk(KERN_ERR "Error %d adding aesd cdev", err);
+    }
+    return err;
+}
+
 
 
 
