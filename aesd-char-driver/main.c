@@ -23,12 +23,23 @@
 #include "aesd-circular-buffer.h"
 #include "aesd_ioctl.h"
 
+
 int aesd_major =   0; // use dynamic major
 int aesd_minor =   0;
 
-// Function prototypes
+// Function declarations
+int aesd_open(struct inode *inode, struct file *filp);
+int aesd_release(struct inode *inode, struct file *filp);
+ssize_t aesd_read(struct file *filp, char __user *buf, size_t count, loff_t *f_pos);
+ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count, loff_t *f_pos);
 loff_t aesd_llseek(struct file *filp, loff_t offset, int pos);
 long aesd_ioctl(struct file *filp, unsigned int cmd, unsigned long arg);
+static int aesd_setup_cdev(struct aesd_dev *dev);
+int aesd_init_module(void);
+void aesd_cleanup_module(void);
+size_t aesd_circular_buffer_total_size(struct aesd_circular_buffer *buffer);
+
+
 
 MODULE_AUTHOR("Shweta Prasad"); 
 MODULE_LICENSE("Dual BSD/GPL");
@@ -54,74 +65,92 @@ int aesd_release(struct inode *inode, struct file *filp)
     return 0;
 }
 
-ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
-                loff_t *f_pos)
+// Function to get total size of circular buffer
+size_t aesd_circular_buffer_total_size(struct aesd_circular_buffer *buffer) 
+{
+    size_t total_size = 0;
+    uint8_t index;
+    struct aesd_buffer_entry *entry;
+
+    AESD_CIRCULAR_BUFFER_FOREACH(entry, buffer, index) 
+    {
+        if (entry->buffptr != NULL) 
+        {
+            total_size += entry->size;
+        }
+    }
+
+    return total_size;
+}
+
+
+ssize_t aesd_read(struct file *filp, char __user *buf, size_t count, loff_t *f_pos) 
 {
     ssize_t retval = 0;
     struct aesd_dev *dev = filp->private_data;
-    struct aesd_buffer_entry *data;
-    size_t bytes_read;
-    size_t bytes_to_read = bytes_read; 
-    size_t i;
+    struct aesd_buffer_entry *data_entry;
+    size_t entry_offset;
+    size_t bytes_to_copy;
+    size_t bytes_remaining = count;
 
-    
-    PDEBUG("read %zu bytes with offset %lld",count,*f_pos);
+    PDEBUG("read %zu bytes with offset %lld", count, *f_pos);
 
     mutex_lock(&dev->lock);
 
-    // Retrieve the pointer to data from the circular buffer starting at *f_pos
-    data = aesd_circular_buffer_find_entry_offset_for_fpos(&dev->buffer, *f_pos, &bytes_read);
-    if (!data) 
+    while (bytes_remaining > 0) 
     {
-        mutex_unlock(&dev->lock);
-        return 0; // No data available
-    }
+        data_entry = aesd_circular_buffer_find_entry_offset_for_fpos(&dev->buffer, *f_pos, &entry_offset);
+        if (!data_entry) 
+        {
+            break;
+        }
 
-   
-    if (bytes_to_read > count) 
-    {
-        bytes_to_read = count; 
-    }
+        // Calculate bytes can be copied from this entry
+        bytes_to_copy = min(bytes_remaining, data_entry->size - entry_offset);
 
-
-    // Transfer data byte by byte to the user space buffer using put_user
-    for (i = 0; i < bytes_to_read; i++) 
-    {
-        if (put_user(data->buffptr[i], buf + i)) 
+        // Copy to user space
+        if (copy_to_user(buf + retval, data_entry->buffptr + entry_offset, bytes_to_copy)) 
         {
             retval = -EFAULT;
             mutex_unlock(&dev->lock);
             return retval;
         }
-    }
 
-    *f_pos += bytes_to_read; // Update the file position
-    retval = bytes_to_read;   // Return the number of bytes read
+        // Update counters and pointers
+        *f_pos += bytes_to_copy;
+        retval += bytes_to_copy;
+        bytes_remaining -= bytes_to_copy;
+
+        // Move to the next entry if needed
+        if (bytes_remaining > 0 && entry_offset + bytes_to_copy >= data_entry->size) 
+        {
+            *f_pos = (*f_pos) % aesd_circular_buffer_total_size(&dev->buffer);
+        }
+    }
 
     mutex_unlock(&dev->lock);
     return retval;
-
 }
 
-ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
-                loff_t *f_pos)
+
+
+ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count, loff_t *f_pos) 
 {
     ssize_t retval = -ENOMEM;
     struct aesd_dev *dev = filp->private_data;
     const char newline = '\n';  
-    size_t new_size = dev->entry.size;
+    size_t new_size = dev->entry.size;  
     ssize_t bytes_not_write;
-    
+
     PDEBUG("write %zu bytes with offset %lld", count, *f_pos);
 
-    
     if (count > AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED) 
     {
-        return -EINVAL; // Return error if too large
+        return -EINVAL; 
     }
 
-    mutex_lock(&dev->lock); 
-  
+    mutex_lock(&dev->lock);
+
     // Allocate memory for the new data or resize if necessary
     if (new_size == 0) 
     {
@@ -136,14 +165,15 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
         mutex_unlock(&dev->lock);
         return retval;
     }
-   
+
     bytes_not_write = copy_from_user((void*)&dev->entry.buffptr[new_size], buf, count);
     retval = count - bytes_not_write;
     dev->entry.size += retval;
 
     *f_pos += retval;  // Update file position
 
-    if (strchr((char*)dev->entry.buffptr, newline)) 
+    // Check for newline and add to circular buffer
+    if (strchr(dev->entry.buffptr, newline)) 
     {
         aesd_circular_buffer_add_entry(&dev->buffer, &dev->entry);
         dev->entry.buffptr = NULL; 
@@ -156,21 +186,8 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 
 
 
-struct file_operations aesd_fops = 
-{
-    .owner = THIS_MODULE,
-    .read = aesd_read,
-    .write = aesd_write,
-    .open = aesd_open,
-    .release = aesd_release,
-    .llseek = aesd_llseek, 
-    .unlocked_ioctl = aesd_ioctl,
- 
- }
-
-
-// llseek implementation
-loff_t aesd_llseek(struct file *filp, loff_t offset, int pos)
+//llseek implementation
+loff_t aesd_llseek(struct file *filp, loff_t offset, int pos) 
 {
     struct aesd_dev *dev = filp->private_data;
     loff_t new_pos;
@@ -185,7 +202,7 @@ loff_t aesd_llseek(struct file *filp, loff_t offset, int pos)
             new_pos = filp->f_pos + offset;
             break;
         case SEEK_END:
-            new_pos = AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED; 
+            new_pos = aesd_circular_buffer_total_size(&dev->buffer);
             break;
         default:
             mutex_unlock(&dev->lock);
@@ -193,7 +210,7 @@ loff_t aesd_llseek(struct file *filp, loff_t offset, int pos)
     }
 
     // Validate the new position
-    if (new_pos < 0 || new_pos > AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED) 
+    if (new_pos < 0 || new_pos > aesd_circular_buffer_total_size(&dev->buffer)) 
     { 
         mutex_unlock(&dev->lock);
         return -EINVAL;
@@ -205,32 +222,32 @@ loff_t aesd_llseek(struct file *filp, loff_t offset, int pos)
 }
 
 
+// adjust file offset
 static long aesd_adjust_file_offset(struct file *filp, unsigned int write_cmd, unsigned int write_cmd_offset)
 {
     struct aesd_dev *dev = filp->private_data;
     unsigned int total_offset = 0;
     unsigned int i;
 
-    if (write_cmd >= dev->buffer.cmd_count || write_cmd_offset >= dev->buffer.entry[write_cmd].size)
+    if (write_cmd >= AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED ||
+        write_cmd_offset >= dev->buffer.entry[write_cmd].size) 
     {
         return -EINVAL;
     }
 
-    for (i = 0; i < write_cmd; i++)
+    for (i = 0; i < write_cmd; i++) 
     {
         total_offset += dev->buffer.entry[i].size;
     }
 
     total_offset += write_cmd_offset;
-
     filp->f_pos = total_offset;
-
     return 0;
 }
 
 
 
-// Correcting aesd_ioctl implementation
+//aesd_ioctl implementation
 long aesd_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
     struct aesd_dev *dev = filp->private_data;
@@ -254,6 +271,17 @@ long aesd_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 }
 
 
+struct file_operations aesd_fops = 
+{
+    .owner = THIS_MODULE,
+    .read = aesd_read,
+    .write = aesd_write,
+    .open = aesd_open,
+    .release = aesd_release,
+    .llseek = aesd_llseek, 
+    .unlocked_ioctl = aesd_ioctl,
+ };
+ 
 
 static int aesd_setup_cdev(struct aesd_dev *dev)
 {
@@ -269,7 +297,6 @@ static int aesd_setup_cdev(struct aesd_dev *dev)
     }
     return err;
 }
-
 
 
 
@@ -291,13 +318,15 @@ int aesd_init_module(void)
 
     result = aesd_setup_cdev(&aesd_device);
 
-    if( result ) 
+    if(result) 
     {
         unregister_chrdev_region(dev, 1);
     }
     return result;
 
 }
+
+
 
 void aesd_cleanup_module(void)
 {
